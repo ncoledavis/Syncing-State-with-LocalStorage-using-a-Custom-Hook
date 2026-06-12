@@ -1,90 +1,80 @@
-# Recipe Router App — Custom Hook: `useWindowSize`
+# Syncing State with LocalStorage using a Custom Hook
 
 ## Overview
 
-This project demonstrates how to package reusable logic into a **custom React hook**. Instead of writing window-resize tracking code inside every component that needs it, we created a single `useWindowSize` hook that any component can import.
+This project demonstrates how to build a custom React hook called `useLocalStorage` that works exactly like `useState`, but automatically backs up its value to the browser's `localStorage` every time it changes. The hook is used here to implement a persistent dark/light mode toggle.
+https://youtu.be/WS0JM40xiKA
+## What Was Done
 
-## The Problem
+### 1. Created the `useLocalStorage` Hook
 
-Imagine you're building a streaming website. You want:
+**File:** `app/hooks/useLocalStorage.js`
 
-- A compact mobile layout when users watch on their phones
-- A full-sized layout when they're on a laptop
+This custom hook:
 
-To make layout decisions, you need to know the browser's current width. Writing that tracking logic directly in every component leads to a lot of duplicate code.
+- Accepts a `key` (the localStorage key) and an `initialValue` (the fallback default)
+- On first render, checks localStorage for an existing value under that key
+- If a stored value exists, it uses that; otherwise it uses the `initialValue`
+- Every time the value changes, a `useEffect` writes the updated value back to localStorage
+- Returns `[value, setValue]` — the same API as `useState`
 
-## The Solution: `useWindowSize`
+### 2. Integrated Dark/Light Mode in `root.tsx`
 
-Located at `app/hooks/useWindowSize.js`, this custom hook encapsulates all the window-tracking logic in one place.
+- Imported and called `useLocalStorage("theme", "light")` to manage the theme state
+- Created a `toggleTheme` function that flips between `"light"` and `"dark"`
+- Wrapped the app content in a div that conditionally applies a `dark` class
+- Added Tailwind `dark:` utility classes for background and text color transitions
+- Passed `theme` and `toggleTheme` as props to the Navbar
 
-### How It Works
+### 3. Updated the Navbar
+
+**File:** `app/components/Navbar.jsx`
+
+- Added a toggle button that displays "Dark" or "Light" depending on the current theme
+- The button calls `toggleTheme` on click
+- Includes an `aria-label` for accessibility
+
+### 4. Configured Tailwind for Class-Based Dark Mode
+
+**File:** `app/app.css`
+
+- Added `@custom-variant dark (&:where(.dark, .dark *))` so that Tailwind's `dark:` utilities are controlled by the presence of a `.dark` class on a parent element, rather than the OS-level media query
+
+## How It Works
+
+```
+User clicks toggle
+       |
+       v
+setTheme("dark")  <-- useLocalStorage setter
+       |
+       v
+React re-renders  +  useEffect fires
+       |                    |
+       v                    v
+UI updates with      localStorage.setItem("theme", "dark")
+dark: classes
+       
+--- On next page load ---
+
+useState initializer runs
+       |
+       v
+localStorage.getItem("theme") --> "dark"
+       |
+       v
+App renders in dark mode immediately
+```
+
+The user's preference survives page refreshes, tab closures, and browser restarts because localStorage persists until manually cleared.
+
+## Usage
 
 ```jsx
-import { useState, useEffect } from "react";
+import { useLocalStorage } from "./hooks/useLocalStorage";
 
-export function useWindowSize() {
-  const [windowSize, setWindowSize] = useState({
-    width: window.innerWidth,
-    height: window.innerHeight,
-  });
-
-  useEffect(() => {
-    function handleResize() {
-      setWindowSize({
-        width: window.innerWidth,
-        height: window.innerHeight,
-      });
-    }
-
-    window.addEventListener("resize", handleResize);
-
-    return () => window.removeEventListener("resize", handleResize);
-  }, []);
-
-  return windowSize;
-}
+// Works just like useState, but persists to localStorage
+const [theme, setTheme] = useLocalStorage("theme", "light");
 ```
 
-### Breakdown
-
-1. **`useState`** — Stores the current `{ width, height }` of the browser window. Initialized with the window's dimensions at the time the component mounts.
-
-2. **`useEffect`** — Runs once on mount (empty dependency array `[]`). It attaches a `resize` event listener to the window so that every time the user resizes their browser, the state updates.
-
-3. **Cleanup function** — The `return` inside `useEffect` removes the event listener when the component unmounts, preventing memory leaks.
-
-4. **Return value** — The hook returns the `windowSize` object so any consuming component can read `.width` and `.height`.
-
-### Usage Example
-
-```jsx
-import { useWindowSize } from "~/hooks/useWindowSize";
-
-export default function VideoPlayer() {
-  const { width, height } = useWindowSize();
-
-  if (width < 768) {
-    return <MobilePlayer />;
-  }
-
-  return <DesktopPlayer />;
-}
-```
-
-Any component that imports the hook gets reactive access to the viewport dimensions — no duplicated resize logic required.
-
-## Running the App
-
-```bash
-npm install
-npm run dev
-```
-
-The dev server will start at `http://localhost:5173` (or the next available port).
-
-## Tech Stack
-
-- React 19
-- React Router 7
-- Tailwind CSS 4
-- Vite 8
+You can reuse `useLocalStorage` for any value you want to persist — user preferences, form drafts, shopping carts, etc.
